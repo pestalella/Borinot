@@ -1,7 +1,6 @@
 #include "passwords.h"
 
 #include "Adafruit_Sensor.h"
-// #include <Adafruit_BME280.h>
 #include "Adafruit_AM2320.h"
 #include "driver/adc.h"
 #include "esp_adc_cal.h"
@@ -160,23 +159,6 @@ void loop()
 
 	int shouldEnableCharge = batVoltage < LOW_BATTERY_VOLTAGE ? HIGH : LOW;
 	digitalWrite(BAT_CHARGE_ENABLE, shouldEnableCharge);
-	// bool pg = digitalRead(BAT_PG_PIN) == LOW;
-	// bool lbo = digitalRead(BAT_LBO_PIN) == LOW;
-	// bool stat2 = digitalRead(BAT_STAT2_PIN) == LOW;
-	// Serial.println("BAT_PG_PIN: " + String(digitalRead(BAT_PG_PIN)));
-	// Serial.println("BAT_LBO_PIN: " + String(digitalRead(BAT_LBO_PIN)));
-	// Serial.println("BAT_STAT2_PIN: " + String(digitalRead(BAT_STAT2_PIN)));
-
-	// bool charging = pg && lbo && !stat2;
-	// bool charge_complete = pg && !lbo && stat2;
-	// bool low_battery = !pg && lbo && !stat2;
-
-	// sensor.addField("BAT_PG", pg);
-	// sensor.addField("BAT_LBO", lbo);
-	// sensor.addField("BAT_STAT2", stat2);
-	// sensor.addField("BAT_CHARGING", charging);
-	// sensor.addField("BAT_CHARGE_COMPLETE", charge_complete);
-	// sensor.addField("BAT_LOW", low_battery);
 
 	// Check WiFi connection and reconnect if needed
 	if (wifiMulti.run() != WL_CONNECTED)
@@ -184,29 +166,7 @@ void loop()
 		Serial.println("Wifi connection lost");
 	}
 
-	//	digitalWrite(CHARGING_PIN, charging || charge_complete);
 	digitalWrite(LOW_BAT_PIN, shouldEnableCharge);
-	// if (pg)
-	// {
-	// 	// We are connected to power supply, we don't need to go to deep sleep
-	// 	// Write point
-	// 	accumDelayBeforeSending += batteryPoweredDelay;
-	// 	if (accumDelayBeforeSending > millisecondsBetweenPosts)
-	// 	{
-	// 		// Print what are we exactly writing
-	// 		Serial.print("Writing: ");
-	// 		Serial.println(sensor.toLineProtocol());
-	// 		if (!client.writePoint(sensor))
-	// 		{
-	// 			Serial.print("InfluxDB write failed: ");
-	// 			Serial.println(client.getLastErrorMessage());
-	// 		}
-	// 		accumDelayBeforeSending = 0;
-	// 	}
-	// 	delay(batteryPoweredDelay);
-	// }
-	// else
-	// {
 	// Write point
 	Serial.print("Writing: ");
 	Serial.println(sensor.toLineProtocol());
