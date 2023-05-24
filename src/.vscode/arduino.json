@@ -1,0 +1,14 @@
+{
+    "configuration": "PSRAM=disabled,FlashSize=4M,PartitionScheme=default,DebugLevel=none,EraseFlash=none",
+    "board": "esp32:esp32:esp32s2usb",
+    "programmer": "esptool",
+    "sketch": "Borinot/Borinot.ino",
+    "output": "ArduinoOutput",
+    "port": "/dev/ttyACM0",
+    "buildPreferences": [
+        [
+            "compiler.cpp.extra_flags",
+            "-DCORE_DEBUG_LEVEL=1"
+        ]
+    ]
+}
