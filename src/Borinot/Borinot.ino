@@ -22,14 +22,12 @@ const char *password = WIFI_PASSWORD;
 
 TwoWire I2CAM2320 = TwoWire(0);
 Adafruit_AM2320 am2320 = Adafruit_AM2320(&I2CAM2320);
-// Adafruit_BME280 bme; // I2C
 
 String setupLog;
 
 const int CHARGING_PIN = GPIO_NUM_5;
 const int LOW_BAT_PIN = GPIO_NUM_6;
 
-const int BAT_CHARGE_ENABLE = GPIO_NUM_7;
 const int BAT_PG_PIN = GPIO_NUM_40;
 const int BAT_LBO_PIN = GPIO_NUM_41;
 const int BAT_STAT2_PIN = GPIO_NUM_42;
@@ -55,10 +53,8 @@ void setup()
 	pinMode(BAT_PG_PIN, INPUT_PULLUP);
 	pinMode(BAT_LBO_PIN, INPUT_PULLUP);
 	pinMode(BAT_STAT2_PIN, INPUT_PULLUP);
-	pinMode(BAT_CHARGE_ENABLE, OUTPUT); // Battery charge enable pin
 
 	delay(10);
-	digitalWrite(BAT_CHARGE_ENABLE, 0); // Disable charging when starting
 
 	if (!I2CAM2320.begin(21, 33))
 	{
@@ -149,34 +145,23 @@ void loop()
 	sensor.addField("Temp", temp);
 	sensor.addField("RH", humidity);
 
-	uint32_t analogReading = adc1_get_raw(ADC1_CHANNEL_3);
-	uint32_t voltageRead = analogReading * 2500 / 8191 * 3730 / 3554;
-	uint32_t batVoltage = voltageRead * 2;
-	Serial.print("Raw value: " + String(analogReading));
-	Serial.print(" bat voltage: ");
-	Serial.print(batVoltage);
-	Serial.println(" mV");
-	sensor.addField("BAT_MILLIVOLTS", batVoltage);
+	bool pg = digitalRead(BAT_PG_PIN) == LOW;
+	bool lbo = digitalRead(BAT_LBO_PIN) == LOW;
+	bool stat2 = digitalRead(BAT_STAT2_PIN) == LOW;
+	Serial.println("BAT_PG_PIN: " + String(digitalRead(BAT_PG_PIN)));
+	Serial.println("BAT_LBO_PIN: " + String(digitalRead(BAT_LBO_PIN)));
+	Serial.println("BAT_STAT2_PIN: " + String(digitalRead(BAT_STAT2_PIN)));
 
-	int shouldEnableCharge = batVoltage < LOW_BATTERY_VOLTAGE ? HIGH : LOW;
-	digitalWrite(BAT_CHARGE_ENABLE, shouldEnableCharge);
-	// bool pg = digitalRead(BAT_PG_PIN) == LOW;
-	// bool lbo = digitalRead(BAT_LBO_PIN) == LOW;
-	// bool stat2 = digitalRead(BAT_STAT2_PIN) == LOW;
-	// Serial.println("BAT_PG_PIN: " + String(digitalRead(BAT_PG_PIN)));
-	// Serial.println("BAT_LBO_PIN: " + String(digitalRead(BAT_LBO_PIN)));
-	// Serial.println("BAT_STAT2_PIN: " + String(digitalRead(BAT_STAT2_PIN)));
+	bool charging = pg && lbo && !stat2;
+	bool charge_complete = pg && !lbo && stat2;
+	bool low_battery = !pg && lbo && !stat2;
 
-	// bool charging = pg && lbo && !stat2;
-	// bool charge_complete = pg && !lbo && stat2;
-	// bool low_battery = !pg && lbo && !stat2;
-
-	// sensor.addField("BAT_PG", pg);
-	// sensor.addField("BAT_LBO", lbo);
-	// sensor.addField("BAT_STAT2", stat2);
-	// sensor.addField("BAT_CHARGING", charging);
-	// sensor.addField("BAT_CHARGE_COMPLETE", charge_complete);
-	// sensor.addField("BAT_LOW", low_battery);
+	sensor.addField("BAT_PG", pg);
+	sensor.addField("BAT_LBO", lbo);
+	sensor.addField("BAT_STAT2", stat2);
+	sensor.addField("BAT_CHARGING", charging);
+	sensor.addField("BAT_CHARGE_COMPLETE", charge_complete);
+	sensor.addField("BAT_LOW", low_battery);
 
 	// Check WiFi connection and reconnect if needed
 	if (wifiMulti.run() != WL_CONNECTED)
@@ -184,38 +169,31 @@ void loop()
 		Serial.println("Wifi connection lost");
 	}
 
-	//	digitalWrite(CHARGING_PIN, charging || charge_complete);
-	digitalWrite(LOW_BAT_PIN, shouldEnableCharge);
-	// if (pg)
-	// {
-	// 	// We are connected to power supply, we don't need to go to deep sleep
-	// 	// Write point
-	// 	accumDelayBeforeSending += batteryPoweredDelay;
-	// 	if (accumDelayBeforeSending > millisecondsBetweenPosts)
-	// 	{
-	// 		// Print what are we exactly writing
-	// 		Serial.print("Writing: ");
-	// 		Serial.println(sensor.toLineProtocol());
-	// 		if (!client.writePoint(sensor))
-	// 		{
-	// 			Serial.print("InfluxDB write failed: ");
-	// 			Serial.println(client.getLastErrorMessage());
-	// 		}
-	// 		accumDelayBeforeSending = 0;
-	// 	}
-	// 	delay(batteryPoweredDelay);
-	// }
-	// else
-	// {
-	// Write point
-	Serial.print("Writing: ");
-	Serial.println(sensor.toLineProtocol());
-	if (!client.writePoint(sensor))
+	digitalWrite(CHARGING_PIN, charging || charge_complete);
+	digitalWrite(LOW_BAT_PIN, low_battery || charge_complete);
+	if (pg)
 	{
-		Serial.print("InfluxDB write failed: ");
-		Serial.println(client.getLastErrorMessage());
+		// We are connected to power supply, we don't need to go to deep sleep
+		// Write point
+		accumDelayBeforeSending += batteryPoweredDelay;
+		if (accumDelayBeforeSending > millisecondsBetweenPosts)
+		{
+			// Print what are we exactly writing
+			Serial.print("Writing: ");
+			Serial.println(sensor.toLineProtocol());
+			if (!client.writePoint(sensor))
+			{
+				Serial.print("InfluxDB write failed: ");
+				Serial.println(client.getLastErrorMessage());
+			}
+			accumDelayBeforeSending = 0;
+		}
+		delay(batteryPoweredDelay);
+	}	else {
+		// Write point
+		client.writePoint(sensor);
+		// Running on battery, deep sleep is needed.
+		esp_sleep_enable_timer_wakeup(600 * 1000000ULL); // 10 minutes
+		esp_deep_sleep_start();
 	}
-	// Running on battery, deep sleep is needed.
-	esp_sleep_enable_timer_wakeup(600 * 1000000ULL); // 10 minutes
-	esp_deep_sleep_start();
 }
