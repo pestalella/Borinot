@@ -1,7 +1,6 @@
 #include "passwords.h"
 
 #include "Adafruit_Sensor.h"
-// #include <Adafruit_BME280.h>
 #include "Adafruit_AM2320.h"
 #include "driver/adc.h"
 #include "esp_adc_cal.h"
@@ -162,6 +161,7 @@ void loop()
 	sensor.addField("BAT_CHARGING", charging);
 	sensor.addField("BAT_CHARGE_COMPLETE", charge_complete);
 	sensor.addField("BAT_LOW", low_battery);
+
 
 	// Check WiFi connection and reconnect if needed
 	if (wifiMulti.run() != WL_CONNECTED)
