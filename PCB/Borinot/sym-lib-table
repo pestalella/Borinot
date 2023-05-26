@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "Borinot")(type "KiCad")(uri "${KIPRJMOD}/Borinot.kicad_sym")(options "")(descr ""))
+)
