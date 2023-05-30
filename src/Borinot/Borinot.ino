@@ -21,19 +21,19 @@ const char *password = WIFI_PASSWORD;
 
 TwoWire I2CAM2320 = TwoWire(0);
 Adafruit_AM2320 am2320 = Adafruit_AM2320(&I2CAM2320);
-// Adafruit_BME280 bme; // I2C
-
-String setupLog;
 
 const int CHARGING_PIN = GPIO_NUM_5;
 const int LOW_BAT_PIN = GPIO_NUM_6;
+const int USB_SENSE = GPIO_NUM_10;
 
 const int BAT_CHARGE_ENABLE = GPIO_NUM_7;
-const int BAT_PG_PIN = GPIO_NUM_40;
-const int BAT_LBO_PIN = GPIO_NUM_41;
-const int BAT_STAT2_PIN = GPIO_NUM_42;
 
-const int LOW_BATTERY_VOLTAGE = 4100;
+const int BATTERY_VOLTAGE_START_CHARGE = 3500;
+const int BATTERY_VOLTAGE_STOP_CHARGE = 4150;
+
+int batteryPoweredDelay = 10000; // 10 second delay
+int millisecondsBetweenPosts = 600000;
+int accumDelayBeforeSending = 0;
 
 // Declare InfluxDB client instance with preconfigured InfluxCloud certificate
 InfluxDBClient client(INFLUXDB_URL, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_TOKEN, InfluxDbCloud2CACert);
@@ -51,9 +51,9 @@ void setup()
 	Serial.begin(115200);
 	pinMode(CHARGING_PIN, OUTPUT); // Indicator LED
 	pinMode(LOW_BAT_PIN, OUTPUT);	 // Indicator LED
-	pinMode(BAT_PG_PIN, INPUT_PULLUP);
-	pinMode(BAT_LBO_PIN, INPUT_PULLUP);
-	pinMode(BAT_STAT2_PIN, INPUT_PULLUP);
+	pinMode(CHARGING_PIN, OUTPUT); // Indicator LED
+
+	pinMode(USB_SENSE, INPUT_PULLDOWN); // USB sense pin (connected to USB 5V)
 	pinMode(BAT_CHARGE_ENABLE, OUTPUT); // Battery charge enable pin
 
 	delay(10);
@@ -61,8 +61,7 @@ void setup()
 
 	if (!I2CAM2320.begin(21, 33))
 	{
-		setupLog += "Couldn't initialize I2C\n";
-		setupLog += String("Error:") + esp_err_to_name(I2CAM2320.last_err);
+		Serial.println("Couldn't initialize I2C");
 	}
 	else
 	{
@@ -71,8 +70,7 @@ void setup()
 
 		if (!status)
 		{
-			setupLog += "Could not find a valid AM320 sensor, check wiring\n";
-			setupLog += "\n";
+			Serial.println("Could not find a valid AM320 sensor, check wiring");
 		}
 	}
 
@@ -127,10 +125,6 @@ void setup()
 	adc1_config_channel_atten(ADC1_CHANNEL_3, ADC_ATTEN_DB_11);
 }
 
-int batteryPoweredDelay = 10000; // 10 second delay
-int millisecondsBetweenPosts = 600000;
-int accumDelayBeforeSending = 0;
-
 void loop()
 {
 	// Clear fields for reusing the point. Tags will remain the same as set above.
@@ -157,8 +151,18 @@ void loop()
 	Serial.println(" mV");
 	sensor.addField("BAT_MILLIVOLTS", batVoltage);
 
-	int shouldEnableCharge = batVoltage < LOW_BATTERY_VOLTAGE ? HIGH : LOW;
-	digitalWrite(BAT_CHARGE_ENABLE, shouldEnableCharge);
+	int canEnableCharge = (batVoltage < BATTERY_VOLTAGE_STOP_CHARGE) ? HIGH : LOW;
+	int low_battery = (batVoltage <= BATTERY_VOLTAGE_START_CHARGE)? HIGH:LOW;
+	int usb_connected = digitalRead(USB_SENSE);
+	int charging = (usb_connected == HIGH) && (canEnableCharge == HIGH) ? HIGH:LOW;
+
+	sensor.addField("USB_CONNECTED", usb_connected == HIGH);
+	sensor.addField("LOW_BAT_VOLTAGE", low_battery == HIGH);
+	sensor.addField("CHARGING", charging == HIGH);
+
+	digitalWrite(CHARGING_PIN, charging);
+	digitalWrite(BAT_CHARGE_ENABLE, charging);
+	digitalWrite(LOW_BAT_PIN, low_battery);
 
 	// Check WiFi connection and reconnect if needed
 	if (wifiMulti.run() != WL_CONNECTED)
@@ -166,16 +170,29 @@ void loop()
 		Serial.println("Wifi connection lost");
 	}
 
-	digitalWrite(LOW_BAT_PIN, shouldEnableCharge);
-	// Write point
-	Serial.print("Writing: ");
-	Serial.println(sensor.toLineProtocol());
-	if (!client.writePoint(sensor))
-	{
-		Serial.print("InfluxDB write failed: ");
-		Serial.println(client.getLastErrorMessage());
+	if (usb_connected) {
+		if (accumDelayBeforeSending >= millisecondsBetweenPosts) {
+			// Write point
+			Serial.print("Writing: ");
+			Serial.println(sensor.toLineProtocol());
+			if (!client.writePoint(sensor))
+			{
+				Serial.print("InfluxDB write failed: ");
+				Serial.println(client.getLastErrorMessage());
+			}
+			accumDelayBeforeSending = 0;
+		} else {
+			accumDelayBeforeSending += batteryPoweredDelay;
+		}
+		delay(batteryPoweredDelay);
+	} else {
+		if (!client.writePoint(sensor))
+		{
+			Serial.print("InfluxDB write failed: ");
+			Serial.println(client.getLastErrorMessage());
+		}
+		// Running on battery, deep sleep is needed.
+		esp_sleep_enable_timer_wakeup(millisecondsBetweenPosts * 1000ULL);
+		esp_deep_sleep_start();
 	}
-	// Running on battery, deep sleep is needed.
-	esp_sleep_enable_timer_wakeup(600 * 1000000ULL); // 10 minutes
-	esp_deep_sleep_start();
 }
