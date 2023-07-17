@@ -1,2 +1,11 @@
-./ArduinoOutput/*
 gerber
+*.step
+*.stp
+*.stl
+*.3mf
+fp-info-cache
+*.jpeg
+*.xml
+*.csv
+*-backups/
+ArduinoOutput
