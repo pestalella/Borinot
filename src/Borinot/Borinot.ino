@@ -171,6 +171,16 @@ void loop()
 	}
 
 	if (usb_connected) {
+		uint8_t macAddress[10];
+		if (esp_efuse_mac_get_default(macAddress) == ESP_OK)
+		{
+
+			String myID = "";
+			for (int i = 5; i >= 0; i--)
+				myID += h2S(macAddress[i]);
+			Serial.println("ID:" + myID);
+		}
+
 		if (accumDelayBeforeSending >= millisecondsBetweenPosts) {
 			// Write point
 			Serial.print("Writing: ");
